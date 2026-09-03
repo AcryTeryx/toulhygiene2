@@ -1,7 +1,7 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowRight, Check, Leaf, LoaderCircle, Recycle, Send, Sparkles, TriangleAlert } from 'lucide-react';
+import { ArrowRight, Bike, Check, Leaf, LoaderCircle, Mail, MapPin, Phone, Recycle, Send, Sparkles, TriangleAlert, UploadCloud } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
@@ -19,6 +19,16 @@ type QuoteDraft = {
   address: string;
   message: string;
   consent: boolean;
+  website: string;
+};
+
+type ApplicationDraft = {
+  lastName: string;
+  firstName: string;
+  email: string;
+  phone: string;
+  position: string;
+  message: string;
   website: string;
 };
 
@@ -43,6 +53,23 @@ const frequencies = [
   '1 fois par mois',
   'Intervention unique',
 ];
+
+const positions = [
+  'Agent d’entretien éco-mobile (à vélo / transports)',
+  'Chef d’équipe nettoyage professionnel',
+  'Agent spécialiste vitrerie & remise en état',
+  'Candidature spontanée',
+];
+
+const emptyApplication: ApplicationDraft = {
+  lastName: '',
+  firstName: '',
+  email: '',
+  phone: '',
+  position: positions[0],
+  message: '',
+  website: '',
+};
 
 const services = [
   {
@@ -95,6 +122,9 @@ export default function Home() {
   const [notice, setNotice] = useState('');
   const [noticeType, setNoticeType] = useState<'success' | 'error'>('success');
   const [isSending, setIsSending] = useState(false);
+  const [application, setApplication] = useState<ApplicationDraft>({ ...emptyApplication });
+  const [applicationCv, setApplicationCv] = useState<File | null>(null);
+  const [isApplying, setIsApplying] = useState(false);
 
   useEffect(() => {
     const context = (document as Document & {
@@ -200,10 +230,59 @@ export default function Home() {
     }
   }
 
-  function prepareApplication(event: FormEvent<HTMLFormElement>) {
+  async function sendApplication(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNoticeType('success');
-    setNotice('Votre candidature est prête. L’adresse de réception sera reliée après validation de vos coordonnées de contact.');
+    const form = event.currentTarget;
+
+    if (!applicationCv) {
+      setNoticeType('error');
+      setNotice('Ajoutez votre CV avant de transmettre votre candidature.');
+      return;
+    }
+
+    const extension = applicationCv.name.split('.').pop()?.toLowerCase();
+    if (!extension || !['pdf', 'docx', 'png'].includes(extension)) {
+      setNoticeType('error');
+      setNotice('Le CV doit être au format PDF, DOCX ou PNG.');
+      return;
+    }
+
+    if (applicationCv.size > 5 * 1024 * 1024) {
+      setNoticeType('error');
+      setNotice('Le CV ne doit pas dépasser 5 Mo.');
+      return;
+    }
+
+    setIsApplying(true);
+    setNotice('');
+
+    try {
+      const formData = new FormData();
+      Object.entries(application).forEach(([key, value]) => formData.append(key, value));
+      formData.append('cv', applicationCv);
+
+      const response = await fetch('/api/recruitment.php', {
+        method: 'POST',
+        headers: { Accept: 'application/json' },
+        body: formData,
+      });
+      const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || 'Le service d’envoi est indisponible.');
+      }
+
+      form.reset();
+      setApplication({ ...emptyApplication });
+      setApplicationCv(null);
+      setNoticeType('success');
+      setNotice('Merci, votre candidature et votre CV ont bien été transmis à Toul’hygiène.');
+    } catch (error) {
+      setNoticeType('error');
+      setNotice(error instanceof Error ? error.message : 'L’envoi n’a pas abouti. Réessayez ou écrivez à contact@toulhygiene.fr.');
+    } finally {
+      setIsApplying(false);
+    }
   }
 
   return (
@@ -337,14 +416,33 @@ export default function Home() {
               </form>
             </TabsContent>
             <TabsContent value="candidature" className="contact-panel">
-              <form onSubmit={prepareApplication}>
+              <div className="quote-form-header candidate-form-header">
+                <span><Leaf aria-hidden="true" /></span>
+                <div><h3>Formulaire d’envoi de candidature</h3><p>Vous partagez nos valeurs éco-responsables ? Venez intégrer l’équipe Toul’hygiène à Toulouse !</p></div>
+              </div>
+              <form onSubmit={sendApplication} aria-busy={isApplying}>
                 <div className="form-grid">
-                  <div><FieldLabel htmlFor="candidate-name">Nom complet</FieldLabel><Input id="candidate-name" required placeholder="Votre nom" /></div>
-                  <div><FieldLabel htmlFor="candidate-email">E-mail</FieldLabel><Input id="candidate-email" type="email" required placeholder="vous@exemple.fr" /></div>
-                  <div className="full"><FieldLabel htmlFor="candidate-message">Votre message</FieldLabel><Textarea id="candidate-message" required minLength={10} placeholder="Présentez-nous votre parcours et vos disponibilités…" /></div>
-                  <div className="full"><FieldLabel htmlFor="candidate-cv">CV</FieldLabel><Input id="candidate-cv" type="file" accept=".pdf,.doc,.docx" /></div>
+                  <div><FieldLabel htmlFor="candidate-last-name">Nom *</FieldLabel><Input id="candidate-last-name" name="family-name" autoComplete="family-name" required value={application.lastName} onChange={(event) => setApplication({ ...application, lastName: event.target.value })} placeholder="Martin" /></div>
+                  <div><FieldLabel htmlFor="candidate-first-name">Prénom *</FieldLabel><Input id="candidate-first-name" name="given-name" autoComplete="given-name" required value={application.firstName} onChange={(event) => setApplication({ ...application, firstName: event.target.value })} placeholder="Lucas" /></div>
+                  <div><FieldLabel htmlFor="candidate-email">Adresse e-mail *</FieldLabel><Input id="candidate-email" name="email" type="email" autoComplete="email" required value={application.email} onChange={(event) => setApplication({ ...application, email: event.target.value })} placeholder="lucas.martin@email.com" /></div>
+                  <div><FieldLabel htmlFor="candidate-phone">Téléphone *</FieldLabel><Input id="candidate-phone" name="tel" type="tel" autoComplete="tel" required minLength={8} value={application.phone} onChange={(event) => setApplication({ ...application, phone: event.target.value })} placeholder="06 98 76 54 32" /></div>
+                  <div className="full"><FieldLabel htmlFor="candidate-position">Poste recherché *</FieldLabel><Select value={application.position} onValueChange={(value) => setApplication({ ...application, position: value ?? '' })} required><SelectTrigger id="candidate-position"><SelectValue placeholder="Choisir un poste" /></SelectTrigger><SelectContent align="start" alignItemWithTrigger={false}>{positions.map((position) => <SelectItem key={position} value={position}>{position}</SelectItem>)}</SelectContent></Select></div>
+                  <div className="full">
+                    <FieldLabel htmlFor="candidate-cv">Votre Curriculum Vitae (CV) *</FieldLabel>
+                    <label className="cv-dropzone" htmlFor="candidate-cv">
+                      <Input className="application-file-input" id="candidate-cv" name="cv" type="file" required accept=".pdf,.docx,.png,application/pdf,application/vnd.openxmlformats-officedocument.wordprocessingml.document,image/png" onChange={(event) => setApplicationCv(event.target.files?.[0] ?? null)} />
+                      <UploadCloud aria-hidden="true" />
+                      <span>{applicationCv ? <strong>{applicationCv.name}</strong> : <>Glissez-déposez votre CV ici ou <u>parcourez vos fichiers</u></>}</span>
+                      <small>Formats acceptés : PDF, DOCX, PNG — 5 Mo maximum</small>
+                    </label>
+                  </div>
+                  <div className="full"><FieldLabel htmlFor="candidate-message">Message de motivation</FieldLabel><Textarea id="candidate-message" maxLength={2500} value={application.message} onChange={(event) => setApplication({ ...application, message: event.target.value })} placeholder="Présentez-vous brièvement, votre expérience ou votre intérêt pour le nettoyage écologique…" /></div>
+                  <div className="form-trap" aria-hidden="true"><FieldLabel htmlFor="candidate-website">Votre site web</FieldLabel><Input id="candidate-website" tabIndex={-1} autoComplete="off" value={application.website} onChange={(event) => setApplication({ ...application, website: event.target.value })} /></div>
                 </div>
-                <Button type="submit" size="lg" className="form-submit">Préparer ma candidature <ArrowRight aria-hidden="true" /></Button>
+                <Button type="submit" size="lg" className="form-submit" disabled={isApplying}>
+                  {isApplying ? <><LoaderCircle className="submit-spinner" aria-hidden="true" />Envoi en cours…</> : <><Send aria-hidden="true" />Transmettre ma candidature</>}
+                </Button>
+                <p className="form-footnote">Votre candidature et votre CV seront envoyés à contact@toulhygiene.fr.</p>
               </form>
             </TabsContent>
             {notice && <output className={`form-notice ${noticeType}`} aria-live="polite">{noticeType === 'error' ? <TriangleAlert aria-hidden="true" /> : <Check aria-hidden="true" />}{notice}</output>}
@@ -352,8 +450,41 @@ export default function Home() {
         </div>
       </section>
 
-      <footer>
-        <div className="footer-inner section-shell"><Brand inverse /><p>Nettoyage professionnel éco-responsable · Toulouse</p><a href="#accueil">Retour en haut ↑</a></div>
+      <footer className="site-footer">
+        <div className="footer-main section-shell">
+          <div className="footer-about">
+            <Brand inverse />
+            <p>Société de nettoyage 100% écologique basée à Toulouse. Produits verts certifiés, déplacements doux à vélo et engagement RSE au quotidien.</p>
+          </div>
+          <nav className="footer-column" aria-label="Navigation du pied de page">
+            <h3>Navigation</h3>
+            <a href="#accueil">Accueil</a>
+            <a href="#a-propos">À propos de nous</a>
+            <a href="#services">Nos prestations</a>
+            <a href="#contact" onClick={() => setContactMode('devis')}>Demande de devis</a>
+            <a href="#contact" onClick={() => setContactMode('candidature')}>Rejoignez notre équipe</a>
+          </nav>
+          <nav className="footer-column" aria-label="Nos prestations">
+            <h3>Nos prestations</h3>
+            <a href="#services">Entretien de bureaux</a>
+            <a href="#services">Nettoyage de copropriétés</a>
+            <a href="#services">Interventions ponctuelles</a>
+            <a href="#services">Remise en état après travaux</a>
+          </nav>
+          <div className="footer-column footer-contact">
+            <h3>Contact Toulouse</h3>
+            <p><MapPin aria-hidden="true" /><span>Toulouse &amp; agglomération toulousaine</span></p>
+            <a href="mailto:contact@toulhygiene.fr"><Mail aria-hidden="true" /><span>contact@toulhygiene.fr</span></a>
+            <a href="tel:+33561000000"><Phone aria-hidden="true" /><span>05 61 00 00 00</span></a>
+            <p><Bike aria-hidden="true" /><span>Équipes mobiles à vélo cargos</span></p>
+          </div>
+        </div>
+        <div className="footer-bottom">
+          <div className="section-shell">
+            <p>© 2026 Toul’hygiène. Tous droits réservés. Nettoyage responsable à Toulouse.</p>
+            <div aria-label="Informations légales"><span>Mentions légales</span><i aria-hidden="true">•</i><span>Politique de confidentialité</span><i aria-hidden="true">•</i><span>Charte Écologique RSE</span></div>
+          </div>
+        </div>
       </footer>
     </main>
   );
