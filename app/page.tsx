@@ -349,10 +349,10 @@ export default function Home() {
             <p>Toul’Hygiène est née de l’initiative de Pauline et Lucas, un jeune couple diplômé de Master et passionné par l’entrepreneuriat. Sensibles aux enjeux environnementaux et aux nouvelles attentes des entreprises en matière de RSE, ils ont imaginé une société capable d’allier efficacité, qualité de service et respect de la planète.</p>
             <p className="story-highlight">Leur ambition : maintenir des locaux impeccables tout en renforçant l’engagement environnemental de leurs clients.</p>
           </div>
-          <div className="story-mark" aria-hidden="true">
-            <div className="story-leaf"><img src="/images/feuilles.png" alt="" /></div>
-            <p>Une approche locale,<br />humaine et durable.</p>
-          </div>
+          <figure className="story-mark">
+            <div className="story-photo-frame"><img src="/images/pauline-lucas.webp" alt="Pauline et Lucas, fondateurs de Toul’hygiène" /></div>
+            <figcaption>Une approche locale,<br />humaine et durable.</figcaption>
+          </figure>
         </div>
       </section>
 
