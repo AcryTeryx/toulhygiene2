@@ -1,14 +1,48 @@
 'use client';
 
 import { FormEvent, useEffect, useState } from 'react';
-import { ArrowRight, Check, Leaf, Recycle, Sparkles } from 'lucide-react';
+import { ArrowRight, Check, Leaf, LoaderCircle, Recycle, Send, Sparkles, TriangleAlert } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
-type QuoteDraft = { name: string; email: string; service: string; message: string };
+type QuoteDraft = {
+  service: string;
+  surface: string;
+  frequency: string;
+  name: string;
+  email: string;
+  phone: string;
+  address: string;
+  message: string;
+  consent: boolean;
+  website: string;
+};
+
+const emptyQuote: QuoteDraft = {
+  service: '',
+  surface: '',
+  frequency: '1 fois par semaine',
+  name: '',
+  email: '',
+  phone: '',
+  address: '',
+  message: '',
+  consent: false,
+  website: '',
+};
+
+const frequencies = [
+  'Quotidien (5j/7)',
+  '2 à 3 fois par semaine',
+  '1 fois par semaine',
+  'Toutes les 2 semaines',
+  '1 fois par mois',
+  'Intervention unique',
+];
 
 const services = [
   {
@@ -57,8 +91,10 @@ function FieldLabel({ htmlFor, children }: { htmlFor: string; children: React.Re
 
 export default function Home() {
   const [contactMode, setContactMode] = useState<'devis' | 'candidature'>('devis');
-  const [quote, setQuote] = useState<QuoteDraft>({ name: '', email: '', service: '', message: '' });
+  const [quote, setQuote] = useState<QuoteDraft>({ ...emptyQuote });
   const [notice, setNotice] = useState('');
+  const [noticeType, setNoticeType] = useState<'success' | 'error'>('success');
+  const [isSending, setIsSending] = useState(false);
 
   useEffect(() => {
     const context = (document as Document & {
@@ -87,9 +123,13 @@ export default function Home() {
           name: { type: 'string', minLength: 2 },
           email: { type: 'string', format: 'email' },
           service: { type: 'string', enum: services.map((service) => service.title) },
+          surface: { type: 'string', description: 'Surface approximative en mètres carrés.' },
+          frequency: { type: 'string', enum: frequencies },
+          phone: { type: 'string', minLength: 8 },
+          address: { type: 'string', minLength: 3 },
           message: { type: 'string', minLength: 10 },
         },
-        required: ['name', 'email', 'service', 'message'],
+        required: ['name', 'email', 'service', 'frequency', 'phone', 'address', 'message'],
         additionalProperties: false,
       },
       annotations: { readOnlyHint: false, untrustedContentHint: false },
@@ -98,9 +138,23 @@ export default function Home() {
         if (!draft || typeof draft.name !== 'string' || draft.name.trim().length < 2) throw new Error('Le nom est requis.');
         if (typeof draft.email !== 'string' || !draft.email.includes('@')) throw new Error('Une adresse e-mail valide est requise.');
         if (!services.some((service) => service.title === draft.service)) throw new Error('Le service demandé est inconnu.');
+        if (!frequencies.includes(draft.frequency)) throw new Error('La fréquence demandée est inconnue.');
+        if (typeof draft.phone !== 'string' || draft.phone.trim().length < 8) throw new Error('Un numéro de téléphone est requis.');
+        if (typeof draft.address !== 'string' || draft.address.trim().length < 3) throw new Error('Une ville ou une adresse est requise.');
         if (typeof draft.message !== 'string' || draft.message.trim().length < 10) throw new Error('Décrivez le besoin en au moins 10 caractères.');
         setContactMode('devis');
-        setQuote({ name: draft.name.trim(), email: draft.email.trim(), service: draft.service, message: draft.message.trim() });
+        setQuote({
+          ...emptyQuote,
+          name: draft.name.trim(),
+          email: draft.email.trim(),
+          service: draft.service,
+          surface: typeof draft.surface === 'string' ? draft.surface.trim() : '',
+          frequency: draft.frequency,
+          phone: draft.phone.trim(),
+          address: draft.address.trim(),
+          message: draft.message.trim(),
+        });
+        setNoticeType('success');
         setNotice('Votre demande est prête. Vérifiez-la avant de poursuivre.');
         await new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
         document.querySelector('#contact')?.scrollIntoView({ behavior: 'smooth' });
@@ -111,13 +165,44 @@ export default function Home() {
     return () => lifecycle.abort();
   }, []);
 
-  function prepareQuote(event: FormEvent<HTMLFormElement>) {
+  async function sendQuote(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
-    setNotice('Votre demande est prête. L’adresse de réception sera reliée après validation de vos coordonnées de contact.');
+
+    if (!quote.consent) {
+      setNoticeType('error');
+      setNotice('Vous devez accepter d’être recontacté au sujet de votre demande.');
+      return;
+    }
+
+    setIsSending(true);
+    setNotice('');
+
+    try {
+      const response = await fetch('/api/contact.php', {
+        method: 'POST',
+        headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
+        body: JSON.stringify(quote),
+      });
+      const result = await response.json().catch(() => null) as { success?: boolean; message?: string } | null;
+
+      if (!response.ok || result?.success !== true) {
+        throw new Error(result?.message || 'Le service d’envoi est indisponible.');
+      }
+
+      setQuote({ ...emptyQuote });
+      setNoticeType('success');
+      setNotice('Merci, votre demande de devis a bien été envoyée. Nous vous répondrons rapidement.');
+    } catch (error) {
+      setNoticeType('error');
+      setNotice(error instanceof Error ? error.message : 'L’envoi n’a pas abouti. Réessayez ou écrivez à contact@toulhygiene.fr.');
+    } finally {
+      setIsSending(false);
+    }
   }
 
   function prepareApplication(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
+    setNoticeType('success');
     setNotice('Votre candidature est prête. L’adresse de réception sera reliée après validation de vos coordonnées de contact.');
   }
 
@@ -216,7 +301,7 @@ export default function Home() {
           <div className="contact-intro">
             <p className="section-kicker light">Parlons de vos espaces</p>
             <h2 id="contact-title">Un besoin de nettoyage&nbsp;?</h2>
-            <p>Choisissez votre démarche, puis préparez votre message. Nous finaliserons ensemble les détails de l’intervention.</p>
+            <p>Décrivez vos espaces et le rythme souhaité. Nous reviendrons vers vous pour préciser l’intervention et préparer votre devis.</p>
             <div className="contact-reassurance"><Check aria-hidden="true" /><span>Réponse personnalisée</span><Check aria-hidden="true" /><span>Intervention à Toulouse et alentours</span></div>
           </div>
           <Tabs value={contactMode} onValueChange={(value) => { setContactMode(value as 'devis' | 'candidature'); setNotice(''); }} className="contact-tabs">
@@ -225,14 +310,30 @@ export default function Home() {
               <TabsTrigger value="candidature">Nous rejoindre</TabsTrigger>
             </TabsList>
             <TabsContent value="devis" className="contact-panel">
-              <form onSubmit={prepareQuote}>
+              <div className="quote-form-header">
+                <span><Send aria-hidden="true" /></span>
+                <div><h3>Formulaire de demande de devis</h3><p>Quelques précisions nous permettront de préparer une estimation adaptée à vos espaces.</p></div>
+              </div>
+              <form onSubmit={sendQuote} aria-busy={isSending}>
                 <div className="form-grid">
-                  <div><FieldLabel htmlFor="quote-name">Nom ou entreprise</FieldLabel><Input id="quote-name" required value={quote.name} onChange={(event) => setQuote({ ...quote, name: event.target.value })} placeholder="Votre nom" /></div>
-                  <div><FieldLabel htmlFor="quote-email">E-mail</FieldLabel><Input id="quote-email" type="email" required value={quote.email} onChange={(event) => setQuote({ ...quote, email: event.target.value })} placeholder="vous@entreprise.fr" /></div>
-                  <div className="full"><FieldLabel htmlFor="quote-service">Service recherché</FieldLabel><Select value={quote.service} onValueChange={(value) => setQuote({ ...quote, service: value ?? '' })} required><SelectTrigger id="quote-service"><SelectValue placeholder="Choisir un service" /></SelectTrigger><SelectContent>{services.map((service) => <SelectItem key={service.title} value={service.title}>{service.title}</SelectItem>)}</SelectContent></Select></div>
-                  <div className="full"><FieldLabel htmlFor="quote-message">Votre besoin</FieldLabel><Textarea id="quote-message" required minLength={10} value={quote.message} onChange={(event) => setQuote({ ...quote, message: event.target.value })} placeholder="Surface, fréquence, lieu, contraintes particulières…" /></div>
+                  <div className="full"><FieldLabel htmlFor="quote-service">Type de prestation souhaité *</FieldLabel><Select value={quote.service} onValueChange={(value) => setQuote({ ...quote, service: value ?? '' })} required><SelectTrigger id="quote-service"><SelectValue placeholder="Sélectionnez un service…" /></SelectTrigger><SelectContent>{services.map((service) => <SelectItem key={service.title} value={service.title}>{service.title}</SelectItem>)}</SelectContent></Select></div>
+                  <div><FieldLabel htmlFor="quote-surface">Surface approximative (m²)</FieldLabel><Input id="quote-surface" type="number" inputMode="decimal" min="1" max="100000" value={quote.surface} onChange={(event) => setQuote({ ...quote, surface: event.target.value })} placeholder="Ex. : 150" /></div>
+                  <div><FieldLabel htmlFor="quote-frequency">Fréquence souhaitée *</FieldLabel><Select value={quote.frequency} onValueChange={(value) => setQuote({ ...quote, frequency: value ?? '' })} required><SelectTrigger id="quote-frequency"><SelectValue placeholder="Choisir une fréquence" /></SelectTrigger><SelectContent>{frequencies.map((frequency) => <SelectItem key={frequency} value={frequency}>{frequency}</SelectItem>)}</SelectContent></Select></div>
+                  <div><FieldLabel htmlFor="quote-name">Nom complet / Entreprise *</FieldLabel><Input id="quote-name" name="name" autoComplete="name" required value={quote.name} onChange={(event) => setQuote({ ...quote, name: event.target.value })} placeholder="Pauline Dupont" /></div>
+                  <div><FieldLabel htmlFor="quote-email">Adresse e-mail *</FieldLabel><Input id="quote-email" name="email" type="email" autoComplete="email" required value={quote.email} onChange={(event) => setQuote({ ...quote, email: event.target.value })} placeholder="contact@entreprise.com" /></div>
+                  <div><FieldLabel htmlFor="quote-phone">Numéro de téléphone *</FieldLabel><Input id="quote-phone" name="tel" type="tel" autoComplete="tel" required minLength={8} value={quote.phone} onChange={(event) => setQuote({ ...quote, phone: event.target.value })} placeholder="06 12 34 56 78" /></div>
+                  <div><FieldLabel htmlFor="quote-address">Ville / Adresse à Toulouse *</FieldLabel><Input id="quote-address" name="street-address" autoComplete="street-address" required value={quote.address} onChange={(event) => setQuote({ ...quote, address: event.target.value })} placeholder="Toulouse Centre, Capitole, Compans…" /></div>
+                  <div className="full"><FieldLabel htmlFor="quote-message">Détails ou précisions particulières *</FieldLabel><Textarea id="quote-message" required minLength={10} maxLength={2500} value={quote.message} onChange={(event) => setQuote({ ...quote, message: event.target.value })} placeholder="Configuration des lieux, horaires souhaités, contraintes d’accès…" /></div>
+                  <div className="form-trap" aria-hidden="true"><FieldLabel htmlFor="quote-website">Votre site web</FieldLabel><Input id="quote-website" tabIndex={-1} autoComplete="off" value={quote.website} onChange={(event) => setQuote({ ...quote, website: event.target.value })} /></div>
+                  <div className="form-consent full">
+                    <Checkbox id="quote-consent" required checked={quote.consent} onCheckedChange={(checked) => setQuote({ ...quote, consent: checked })} />
+                    <label htmlFor="quote-consent">J’accepte que Toul’hygiène me recontacte au sujet de ma demande de devis. *</label>
+                  </div>
                 </div>
-                <Button type="submit" size="lg" className="form-submit">Préparer ma demande <ArrowRight aria-hidden="true" /></Button>
+                <Button type="submit" size="lg" className="form-submit" disabled={isSending}>
+                  {isSending ? <><LoaderCircle className="submit-spinner" aria-hidden="true" />Envoi en cours…</> : <><Send aria-hidden="true" />Envoyer ma demande de devis</>}
+                </Button>
+                <p className="form-footnote">Votre demande sera envoyée à contact@toulhygiene.fr. Les champs marqués d’un * sont obligatoires.</p>
               </form>
             </TabsContent>
             <TabsContent value="candidature" className="contact-panel">
@@ -246,8 +347,7 @@ export default function Home() {
                 <Button type="submit" size="lg" className="form-submit">Préparer ma candidature <ArrowRight aria-hidden="true" /></Button>
               </form>
             </TabsContent>
-            {notice && <output className="form-notice" aria-live="polite"><Check aria-hidden="true" />{notice}</output>}
-            <p className="form-footnote">Aucun message n’est envoyé depuis cet aperçu : ajoutez l’adresse e-mail de réception pour activer l’envoi.</p>
+            {notice && <output className={`form-notice ${noticeType}`} aria-live="polite">{noticeType === 'error' ? <TriangleAlert aria-hidden="true" /> : <Check aria-hidden="true" />}{notice}</output>}
           </Tabs>
         </div>
       </section>
