@@ -13,6 +13,8 @@
   --foreground: var(--ink);
   --card: #ffffff;
   --card-foreground: var(--ink);
+  --popover: #ffffff;
+  --popover-foreground: var(--ink);
   --primary: var(--forest);
   --primary-foreground: #ffffff;
   --secondary: var(--pale);
@@ -259,6 +261,9 @@ h1 { max-width: 650px; margin: 0; color: var(--magenta); font-size: clamp(3.2rem
 .field-label { display: block; margin: 0 0 8px; color: var(--forest); font-size: .8rem; font-weight: 800; letter-spacing: .05em; }
 .contact-panel [data-slot="input"], .contact-panel [data-slot="textarea"], .contact-panel [data-slot="select-trigger"] { width: 100%; min-height: 48px; border-color: #bdd1af; border-radius: 14px; background: white; padding-inline: 14px; font-size: 1rem; }
 .contact-panel [data-slot="textarea"] { min-height: 128px; padding-block: 13px; resize: vertical; }
+[data-slot="select-content"] { border: 1px solid #9fbea5; border-radius: 14px; background: white; padding: 6px; color: var(--forest); box-shadow: 0 16px 38px rgb(16 70 42 / 18%); }
+[data-slot="select-item"] { min-height: 38px; padding: 8px 36px 8px 12px; line-height: 1.35; }
+[data-slot="select-item"]:focus { background: var(--pale); color: var(--forest); }
 .form-consent { display: flex; gap: 12px; align-items: flex-start; color: #244d31; font-size: .82rem; font-weight: 700; line-height: 1.5; }
 .form-consent [data-slot="checkbox"] { margin-top: 2px; border-color: #73a780; background: white; }
 .form-consent label { cursor: pointer; }
